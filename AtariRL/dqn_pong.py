@@ -1,5 +1,6 @@
 import wrappers
 import dqn_model
+import universe
 
 import argparse
 import time
@@ -98,7 +99,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cuda', default = False, action = 'store_true', help = 'Enable cuda')
     parser.add_argument('--env', default = DEFAULT_ENV_NAME, help = 'Name of the environment, default = {}'.format(DEFAULT_ENV_NAME))
-    parser.add_argument('--reward', type = float, default = MEAN_REWARD_BOUND, help = 'Mean reward boundary to stop training, default = {.2f}'.format(MEAN_REWARD_BOUND))
+    parser.add_argument('--reward', type = float, default = MEAN_REWARD_BOUND, help = 'Mean reward boundary to stop training, default = {0:.2f}'.format(MEAN_REWARD_BOUND))
     args = parser.parse_args()
     device = torch.device('cuda' if args.cuda else 'cpu')
 
@@ -107,6 +108,11 @@ if __name__ == '__main__':
     net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
     tgt_net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
     writer = SummaryWriter(comment = '-' + args.env)
+    print(net)
+
+    buffer = ExperienceBuffer(REPLAY_SIZE)
+    agent = Agent(env, buffer)
+    epsilon = EPSILON_START
 
     optimizer = optim.Adam(net.parameters(), lr = LEARNING_RATE)
     total_rewards = []
@@ -124,3 +130,33 @@ if __name__ == '__main__':
             total_rewards.append(reward)
             speed = (frame_idx - ts_frame) / (time.time() - ts)
             ts_frame = frame_idx
+            ts = time.time()
+            mean_reward = np.mean(total_rewards[-100:]) # mean of last 100 items
+            print('{}: done {} games, mean_reward {0:.3f}, eps {0:.2f}, speed {0:.2f} f/s'.fromat(frame_idx, len(total_rewards), mean_reward, epsilon, speed))
+
+            writer.add_scalar('epsilon', epsilon, frame_idx)
+            writer.add_scalar('speed', speed, frame_idx)
+            writer.add_scalar('mean_reward', mean_reward, frame_idx)
+            writer.add_scalar('reward', reward, frame_idx)
+            if best_mean_reward is None or best_mean_reward < mean_reward:
+                torch.save(net.state_dict(), args.env + '-best.dat')
+                if best_mean_reward is not None:
+                    print('Best mean reward updated {0:.3f} -> {0:.3f}, model saved'.fromat(best_mean_reward, mean_reward))
+                best_mean_reward = mean_reward
+            if mean_reward > args.reward:
+                print('Solved in {} frames!'.format(frame_idx))
+                break
+            
+        if len(buffer) < REPLAY_START_SIZE:
+            continue
+        
+        if frame_idx % SYNC_TARGET_FRAMES == 0:
+            tgt_net.load_state_dict(net.state_dict())
+        
+
+        optimizer.zero_grad()
+        batch = buffer.sample(BATCH_SIZE)
+        loss_t = calc_loss(batch, net, tgt_net, device = device)
+        loss_t.backward()
+        optimizer.step()
+    writer.close()
