@@ -42,5 +42,27 @@ class MaxAndSkipEnv(gym.Wrapper):
             total_reward += reward
             if done:
                 break
+        max_frame = np.max(np.stack(self._obs_buffer), axis = 0)
+        return max_frame, total_reward, done, info
     
+    def _reset(self):
+        self._obs_buffer.clear()
+        obs = self.env.reset()
+        self._obs_buffer.append(obs)
+        return obs
+
+class ProcessFrame84(gym.ObservationWrapper):
+    def __init__(self, env = None):
+        super(ProcessFrame84).__init__(env)
+        self.observation_space = gym.spaces.Box(low = 0, high = 255, shape = (84, 84, 1), dtype = np.uint8)
+
+        def observaton(self, obs):
+            return ProcessFrame84.process(obs)
+        
+        @staticmethod
+        def process(frame):
+            if frame.size == 210 * 160 * 3:
+                img = np.reshape(frame, [210, 160, 3]).astype(np.float32)
+            elif frame.size == 250 * 160 * 3:
+                img = np.reshape(frame, [250, 160, 3]).astype(np.float32)
     
