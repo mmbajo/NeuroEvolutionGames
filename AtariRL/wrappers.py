@@ -23,5 +23,24 @@ class FireResetEnv(gym.Wrapper):
             self.env.reset()
         return obs
 
+class MaxAndSkipEnv(gym.Wrapper):
+    def __init__(self, env = None, skip = 4):
+        '''
+        Retun only every skip -th frame
+        '''
+        super(MaxAndSkipEnv).__init__(env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = collections.deque(maxlen = 2)
+        self._skip = skip
 
- 
+    def step(self, action):
+        total_reward = 0.0
+        done = None
+        for _ in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            self._obs_buffer.append(obs)
+            total_reward += reward
+            if done:
+                break
+    
+    
